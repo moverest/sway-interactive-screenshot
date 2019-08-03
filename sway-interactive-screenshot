@@ -1,7 +1,19 @@
 #!/bin/bash
 
+# `list_geometry` returns the geometry of the focused of visible windows. You can also get they title
+# by setting a second argument to `with_description`. The geometry and the title are seperated by `\t`.
+#
+# Arguments:
+#   $1: `focused` or `visible`
+#   $2: `with_description` or nothing
+#
+# Output examples:
+#   - with the `with_description` option:
+#      12,43 100x200\tTermite
+#   - without the `with_description` option:
+#      12,43 100x200
 function list_geometry () {
-	[ "$2" = "with_description" ] && local append="\t\(.name)" || local append=
+	[ "$2" = with_description ] && local append="\t\(.name)" || local append=
 	swaymsg -t get_tree | jq -r '.. | (.nodes? // empty)[] | select(.'$1' and .pid) | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)'$append'"'
 }
 
