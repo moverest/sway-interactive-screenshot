@@ -2,6 +2,10 @@
 
 sway-interactive-screenshot is as simple bash script to take screenshot easly on sway. Just launch the script and it will ask you what you want to take a screenshot.
 
+## Install
+
+If you are using Archlinux, you can install sway-interactive-screenshot with the AUR package [`sway-interactive-screenshot`](https://aur.archlinux.org/packages/sway-interactive-screenshot) (e.g. `yay -S sway-interactive-screenshot`).
+
 ## Dependencies
 
 - `swaywm` obviously
@@ -11,8 +15,6 @@ sway-interactive-screenshot is as simple bash script to take screenshot easly on
 - `slurp` to select an area on the screen
 - `notify-send` to send a notification to notification daomon (such as [`mako`](https://github.com/emersion/mako))
 - `wl-copy` to copy the screenshot to the clipboard
-
-On Archlinux, you can install them all with `pacman -S jq rofi grim slurp notify-send wl-copy`.
 
 ## Bind it to the `Print` key
 
