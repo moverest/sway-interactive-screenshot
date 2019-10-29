@@ -27,7 +27,9 @@ focused
 $WINDOWS
 EOF`
 
-FILENAME="~/Temporary/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"
+SAVEDIR=${SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR:=~}
+mkdir -p -- "$SAVEDIR"
+FILENAME="$SAVEDIR/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"
 EXPENDED_FILENAME="${FILENAME/#\~/$HOME}"
 
 case $CHOICE in
