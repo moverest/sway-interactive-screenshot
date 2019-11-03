@@ -23,3 +23,7 @@ To bind this script to the `Print` key, just add this to your `~/.config/sway/co
 ```
 bindsym Print exec /path/to/sway-interactive-screenshot
 ```
+
+## Settings
+
+By default, `sway-interactive-screenshot` saves the screenshots in the home directory. You can change that by setting the `SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR` environment variable to another directory.
