@@ -51,5 +51,20 @@ case $CHOICE in
         grim -g "$GEOMETRY" "$EXPENDED_FILENAME"
 esac
 
+EDIT_CHOICE=`rofi -dmenu -p 'Edit' << EOF
+yes
+no
+EOF`
+
+case $EDIT_CHOICE in
+    yes)
+        swappy -f "$EXPENDED_FILENAME" -o "$EXPENDED_FILENAME"
+        ;;
+    no)
+        ;;
+    '')
+        ;;
+esac
+
 wl-copy < "$EXPENDED_FILENAME"
 notify-send "Screenshot" "File saved as <i>'$FILENAME'</i> and copied to the clipboard." -i "$EXPENDED_FILENAME"
