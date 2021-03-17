@@ -51,7 +51,7 @@ case $CHOICE in
         grim -g "$GEOMETRY" "$EXPENDED_FILENAME"
 esac
 
-EDIT_CHOICE=`rofi -dmenu -p 'Edit' << EOF
+EDIT_CHOICE=`rofi -dmenu -p 'Edit' -lines 2 << EOF
 yes
 no
 EOF`
