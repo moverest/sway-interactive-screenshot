@@ -51,5 +51,24 @@ case $CHOICE in
         grim -g "$GEOMETRY" "$EXPENDED_FILENAME"
 esac
 
+# If swappy is installed, prompt the user to edit the captured screenshot
+if command -v swappy $>/dev/null
+then
+    EDIT_CHOICE=`rofi -dmenu -p 'Edit' -lines 2 << EOF
+yes
+no
+EOF`
+
+    case $EDIT_CHOICE in
+        yes)
+            swappy -f "$EXPENDED_FILENAME" -o "$EXPENDED_FILENAME"
+            ;;
+        no)
+            ;;
+        '')
+            ;;
+    esac
+fi
+
 wl-copy < "$EXPENDED_FILENAME"
 notify-send "Screenshot" "File saved as <i>'$FILENAME'</i> and copied to the clipboard." -i "$EXPENDED_FILENAME"
