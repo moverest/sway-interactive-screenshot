@@ -35,26 +35,26 @@ EXPENDED_FILENAME="${FILENAME/#\~/$HOME}"
 case $CHOICE in
     fullscreen)
         grim "$EXPENDED_FILENAME"
-	;;
+        ;;
     region)
         grim -g "$(slurp)" "$EXPENDED_FILENAME"
-	;;
+        ;;
     focused)
         grim -g "$FOCUSED" "$EXPENDED_FILENAME"
-	;;
+        ;;
     '')
         notify-send "Screenshot" "Cancelled"
         exit 0
         ;;
     *)
-    	GEOMETRY="`echo \"$CHOICE\" | cut -d$'\t' -f1`"
+        GEOMETRY="`echo \"$CHOICE\" | cut -d' ' -f1,2`"
         grim -g "$GEOMETRY" "$EXPENDED_FILENAME"
 esac
 
 # If swappy is installed, prompt the user to edit the captured screenshot
 if command -v swappy $>/dev/null
 then
-    EDIT_CHOICE=`fuzzel --dmenu --prompt '📷> Edit?' --lines 2 << EOF
+    EDIT_CHOICE=`fuzzel --dmenu --prompt '📷> Edit? ' --lines 2 << EOF
 no
 yes
 EOF`
