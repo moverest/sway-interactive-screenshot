@@ -10,7 +10,7 @@ If you are using Archlinux, you can install sway-interactive-screenshot with the
 
 - `swaywm` obviously
 - `jq` to parse `swaymsg` JSON response that lists windows
-- `rofi` to prompt what you want to take a screenshot of
+- `fuzzel` to prompt what you want to take a screenshot of
 - `grim` to take the screenshot
 - `slurp` to select an area on the screen
 - [`swappy`](https://github.com/jtheoof/swappy) (optional) to edit the captured screenshot
