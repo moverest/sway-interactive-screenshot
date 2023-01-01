@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import abc
 import os
 import json
 import subprocess
@@ -285,6 +286,42 @@ def copy_file_to_clipboard(filepath: str) -> None:
             process.wait()
 
 
+class NotificationAction(abc.ABC):
+    name: str
+    description: str
+
+    @classmethod
+    @abc.abstractmethod
+    def run(cls, *, filepath: Path) -> None:
+        pass
+
+
+class EditNotificationAction(NotificationAction):
+    name = "default"
+    description = "Edit screenshot"
+
+    @classmethod
+    def run(cls, *, filepath: Path) -> None:
+        filepath_str = str(filepath.expanduser())
+        edit_capture(filepath_str)
+        copy_file_to_clipboard(filepath_str)
+
+
+class DeleteNotificationAction(NotificationAction):
+    name = "delete"
+    description = "Delete screenshot"
+
+    @classmethod
+    def run(cls, *, filepath: Path) -> None:
+        filepath.expanduser().unlink()
+        notify("Screenshot deleted")
+
+
+NOTIFICATION_ACTIONS = {
+    action.name: action for action in (EditNotificationAction, DeleteNotificationAction)
+}
+
+
 def main():
     save_path = Path(os.getenv("SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR", "~"))
     save_path.expanduser().mkdir(parents=True, exist_ok=True)
@@ -314,15 +351,18 @@ def main():
         choice.capture(filepath=filepath.expanduser())
         copy_file_to_clipboard(filepath.expanduser())
 
-        action = notify(
+        action_name = notify(
             "Screenshot",
             summary=f"File saved as <i>{filepath}</i>.",
             icon=filepath.expanduser(),
-            actions=(("default", "Edit"),),
+            actions=[
+                (action.name, action.description)
+                for action in NOTIFICATION_ACTIONS.values()
+            ],
         )
-        if action == "default":
-            edit_capture(filepath.expanduser())
-            copy_file_to_clipboard(filepath.expanduser())
+        action = NOTIFICATION_ACTIONS.get(action_name)
+        if action is not None:
+            action.run(filepath=filepath)
 
     except Exception as err:  # pylint: disable=broad-except
         if isinstance(err, CanceledError):
