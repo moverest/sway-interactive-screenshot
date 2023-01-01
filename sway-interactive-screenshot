@@ -4,7 +4,17 @@ import os
 import json
 import subprocess
 from datetime import datetime
-from typing import Any, Dict, Iterator, List, NamedTuple, Union, Optional, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Union,
+    Optional,
+    Tuple,
+)
 from pathlib import Path
 
 
@@ -32,9 +42,9 @@ class Window(NamedTuple):
         capture(filepath=filepath, geometry=self.get_geometry_str())
 
 
-class Fullscreen:
+class AllOutputs:
     def __str__(self) -> str:
-        return "fullscreen"
+        return "all outputs"
 
     def capture(self, *, filepath: str) -> None:
         capture(filepath=filepath)
@@ -52,9 +62,9 @@ class Region:
         capture(filepath=filepath, geometry=geometry)
 
 
-class Focused:
+class FocusedWindow:
     def __str__(self) -> str:
-        return "focused"
+        return "focused window"
 
     def capture(self, *, filepath: str) -> None:
         window = next(
@@ -65,6 +75,36 @@ class Focused:
             raise CanceledError("Could not find any focused window.")
 
         window.capture(filepath=filepath)
+
+
+class SelectWindow:
+    def __str__(self) -> str:
+        return "select window"
+
+    def capture(self, *, filepath: str) -> None:
+        windows = list(get_windows())
+        if not windows:
+            raise CanceledError("No visible window found.")
+
+        geometry = ask_geometry(window.get_geometry_str() for window in windows)
+        if geometry is None:
+            raise CanceledError("No window selected.")
+        capture(filepath=filepath, geometry=geometry)
+
+
+class FocusedOutput:
+    def __str__(self) -> str:
+        return "focused output"
+
+    def capture(self, *, filepath: str) -> None:
+        output = next(
+            (output for output in get_windows() if output.focused),
+            None,
+        )
+        if output is None:
+            raise CanceledError("Could not find any focused output.")
+
+        output.capture(filepath=filepath)
 
 
 class Output(NamedTuple):
@@ -83,7 +123,7 @@ class Output(NamedTuple):
 
 class SelectOutput:
     def __str__(self) -> str:
-        return "output"
+        return "select output"
 
     def capture(self, *, filepath: str) -> None:
         output = ask_output()
@@ -207,8 +247,18 @@ def capture(
     subprocess.run(args, check=True)
 
 
-def ask_geometry() -> Optional[str]:
-    process = subprocess.run(["slurp"], capture_output=True, check=False)
+def ask_geometry(geometries: Optional[Iterable[str]] = None) -> Optional[str]:
+    if geometries is not None:
+        geomerties_input = b"\n".join(geometry.encode() for geometry in geometries)
+    else:
+        geomerties_input = None
+
+    process = subprocess.run(
+        ["slurp"],
+        capture_output=True,
+        input=geomerties_input,
+        check=False,
+    )
     if process.returncode != 0:
         return None
 
@@ -241,12 +291,14 @@ def main():
 
     try:
         choices = [
-            Fullscreen(),
             Region(),
-            Focused(),
+            FocusedOutput(),
+            AllOutputs(),
             SelectOutput(),
-            *get_windows(),
             *get_outputs(),
+            FocusedWindow(),
+            SelectWindow(),
+            *get_windows(),
         ]
 
         choice_idx = ask(choices, prompt="📷> ", index=True)
