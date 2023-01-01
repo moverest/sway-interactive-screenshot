@@ -1,74 +1,284 @@
-#!/bin/bash
+#!/usr/bin/env python3
 
-# `list_geometry` returns the geometry of the focused of visible windows. You can also get they title
-# by setting a second argument to `with_description`. The geometry and the title are seperated by `\t`.
-#
-# Arguments:
-#   $1: `focused` or `visible`
-#   $2: `with_description` or nothing
-#
-# Output examples:
-#   - with the `with_description` option:
-#      12,43 100x200 Termite
-#   - without the `with_description` option:
-#      12,43 100x200
-function list_geometry () {
-	[ "$2" = with_description ] && local append=" \(.name)" || local append=
-	swaymsg -t get_tree | jq -r ".. | (.nodes? // empty)[] | select(.$1 and .pid) | \"\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)$append\""
-}
+import os
+import json
+import subprocess
+from datetime import datetime
+from typing import Any, Dict, Iterator, List, NamedTuple, Union, Optional, Tuple
+from pathlib import Path
 
-WINDOWS=`list_geometry visible with_description`
-FOCUSED=`list_geometry focused`
 
-CHOICE=`fuzzel -dmenu -p '📷> ' << EOF
-fullscreen
-region
-focused
-$WINDOWS
-EOF`
+class CanceledError(Exception):
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+        self.msg = msg
 
-SAVEDIR=${SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR:=~}
-mkdir -p -- "$SAVEDIR"
-FILENAME="$SAVEDIR/$(date +'%Y-%m-%d-%H%M%S_screenshot.png')"
-EXPENDED_FILENAME="${FILENAME/#\~/$HOME}"
 
-case $CHOICE in
-    fullscreen)
-        grim "$EXPENDED_FILENAME"
-        ;;
-    region)
-        grim -g "$(slurp)" "$EXPENDED_FILENAME"
-        ;;
-    focused)
-        grim -g "$FOCUSED" "$EXPENDED_FILENAME"
-        ;;
-    '')
-        notify-send "Screenshot" "Cancelled"
-        exit 0
-        ;;
-    *)
-        GEOMETRY="`echo \"$CHOICE\" | cut -d' ' -f1,2`"
-        grim -g "$GEOMETRY" "$EXPENDED_FILENAME"
-esac
+class Window(NamedTuple):
+    name: str
+    x: int
+    y: int
+    width: int
+    height: int
+    focused: bool
 
-# If swappy is installed, prompt the user to edit the captured screenshot
-if command -v swappy $>/dev/null
-then
-    EDIT_CHOICE=`fuzzel --dmenu --prompt '📷> Edit? ' --lines 2 << EOF
-no
-yes
-EOF`
+    def __str__(self) -> str:
+        return f"window: {self.name}"
 
-    case $EDIT_CHOICE in
-        yes)
-            swappy -f "$EXPENDED_FILENAME" -o "$EXPENDED_FILENAME"
-            ;;
-        no)
-            ;;
-        '')
-            ;;
-    esac
-fi
+    def get_geometry_str(self) -> str:
+        return f"{self.x},{self.y} {self.width}x{self.height}"
 
-wl-copy < "$EXPENDED_FILENAME"
-notify-send "Screenshot" "File saved as <i>'$FILENAME'</i> and copied to the clipboard." -i "$EXPENDED_FILENAME"
+    def capture(self, *, filepath: str) -> None:
+        capture(filepath=filepath, geometry=self.get_geometry_str())
+
+
+class Fullscreen:
+    def __str__(self) -> str:
+        return "fullscreen"
+
+    def capture(self, *, filepath: str) -> None:
+        capture(filepath=filepath)
+
+
+class Region:
+    def __str__(self) -> str:
+        return "region"
+
+    def capture(self, *, filepath: str) -> None:
+        geometry = ask_geometry()
+        if geometry is None:
+            raise CanceledError("No region selected.")
+
+        capture(filepath=filepath, geometry=geometry)
+
+
+class Focused:
+    def __str__(self) -> str:
+        return "focused"
+
+    def capture(self, *, filepath: str) -> None:
+        window = next(
+            (window for window in get_windows() if window.focused),
+            None,
+        )
+        if window is None:
+            raise CanceledError("Could not find any focused window.")
+
+        window.capture(filepath=filepath)
+
+
+class Output(NamedTuple):
+    name: str
+    model: Optional[str]
+    focused: bool
+
+    def __str__(self) -> str:
+        model = f" ({self.model})" if self.model else ""
+        focused = " (focused)" if self.focused else ""
+        return f"output: {self.name}{model}{focused}"
+
+    def capture(self, *, filepath: str) -> None:
+        capture(filepath=filepath, output=self.name)
+
+
+class SelectOutput:
+    def __str__(self) -> str:
+        return "output"
+
+    def capture(self, *, filepath: str) -> None:
+        output = ask_output()
+        if output is None:
+            raise CanceledError("No output selected.")
+
+        capture(filepath=filepath, output=output)
+
+
+def get_windows() -> Iterator[Window]:
+    def walk(node: Dict[str, Any]) -> Iterator[Window]:
+        sub_nodes = node.get("nodes")
+        if sub_nodes:
+            for sub_node in sub_nodes:
+                yield from walk(sub_node)
+        elif node.get("visible") and node.get("pid"):
+            rect = node["rect"]
+            yield Window(
+                name=node["name"],
+                x=rect["x"],
+                y=rect["y"],
+                width=rect["width"],
+                height=rect["height"],
+                focused=node["focused"],
+            )
+
+    process = subprocess.run(
+        ["swaymsg", "-t", "get_tree"],
+        capture_output=True,
+        check=True,
+    )
+    tree = json.loads(process.stdout.decode())
+    return walk(tree)
+
+
+def get_outputs() -> Iterator[Output]:
+    process = subprocess.run(
+        ["swaymsg", "-t", "get_outputs"],
+        capture_output=True,
+        check=True,
+    )
+    for output in json.loads(process.stdout.decode()):
+        yield Output(
+            name=output["name"],
+            model=output["model"],
+            focused=output["focused"],
+        )
+
+
+def ask(
+    choices: List[Any],
+    *,
+    prompt: Optional[str] = None,
+    lines: Optional[int] = None,
+    index: bool = False,
+) -> Union[int, str, None]:
+    args = ["fuzzel", "--dmenu"]
+
+    if index:
+        args.append("--index")
+
+    if prompt is not None:
+        args.extend(("--prompt", prompt))
+
+    if lines is not None:
+        args.extend(("--lines", str(lines)))
+
+    process = subprocess.run(
+        args,
+        input=b"\n".join(str(choice).encode() for choice in choices),
+        capture_output=True,
+        check=False,
+    )
+
+    if process.returncode != 0:
+        return None
+
+    stdout = process.stdout.decode()
+
+    return int(stdout) if index else stdout.strip()
+
+
+def notify(
+    title: str,
+    summary: Optional[str] = None,
+    *,
+    icon: Optional[str] = None,
+    actions: List[Tuple[str, str]] = None,
+) -> Optional[str]:
+    args = ["notify-send"]
+
+    if icon is not None:
+        args.extend(("--icon", icon))
+
+    for action_name, action_desc in actions or ():
+        args.extend(("-A", f"{action_name}={action_desc}"))
+
+    args.extend(("--", title))
+    if summary:
+        args.append(summary)
+
+    process = subprocess.run(args, capture_output=True, check=True)
+    return process.stdout.decode().strip() or None
+
+
+def capture(
+    *,
+    filepath: str,
+    geometry: Optional[str] = None,
+    output: Optional[str] = None,
+) -> None:
+    args = ["grim"]
+
+    if geometry is not None:
+        args.extend(("-g", geometry))
+
+    if output is not None:
+        args.extend(("-o", output))
+
+    args.append(filepath)
+    subprocess.run(args, check=True)
+
+
+def ask_geometry() -> Optional[str]:
+    process = subprocess.run(["slurp"], capture_output=True, check=False)
+    if process.returncode != 0:
+        return None
+
+    return process.stdout.decode().strip()
+
+
+def ask_output() -> Optional[str]:
+    process = subprocess.run(
+        ["slurp", "-o", "-f", "%o"], capture_output=True, check=False
+    )
+    if process.returncode != 0:
+        return None
+
+    return process.stdout.decode().strip()
+
+
+def edit_capture(filepath: str) -> None:
+    subprocess.run(["swappy", "-f", filepath, "-o", filepath], check=False)
+
+
+def copy_file_to_clipboard(filepath: str) -> None:
+    with open(filepath, "rb") as file:
+        with subprocess.Popen("wl-copy", stdin=file) as process:
+            process.wait()
+
+
+def main():
+    save_path = Path(os.getenv("SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR", "~"))
+    save_path.expanduser().mkdir(parents=True, exist_ok=True)
+
+    try:
+        choices = [
+            Fullscreen(),
+            Region(),
+            Focused(),
+            SelectOutput(),
+            *get_windows(),
+            *get_outputs(),
+        ]
+
+        choice_idx = ask(choices, prompt="📷> ", index=True)
+        if choice_idx is None:
+            return
+        if choice_idx == -1:
+            raise CanceledError("No option selected.")
+
+        choice = choices[choice_idx]
+
+        time_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        filepath = save_path / f"screenshot_{time_str}.png"
+        choice.capture(filepath=filepath.expanduser())
+        copy_file_to_clipboard(filepath.expanduser())
+
+        action = notify(
+            "Screenshot",
+            summary=f"File saved as <i>{filepath}</i>.",
+            icon=filepath.expanduser(),
+            actions=(("default", "Edit"),),
+        )
+        if action == "default":
+            edit_capture(filepath.expanduser())
+            copy_file_to_clipboard(filepath.expanduser())
+
+    except Exception as err:  # pylint: disable=broad-except
+        if isinstance(err, CanceledError):
+            notify("Screenshot canceled", summary=err.msg)
+        else:
+            notify("Screenshot error")
+            raise
+
+
+if __name__ == "__main__":
+    main()
