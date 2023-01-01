@@ -26,6 +26,8 @@ For the program to work, you will need the following dependencies installed:
   screenshot to the clipboard.
 - [`swappy`](https://github.com/jtheoof/swappy) (optional) to edit the captured
   screenshot.
+- [`dragon`](https://github.com/mwh/dragon) (optional) to drag and drop the
+  captured screenshot.
 
 ## Bind to the `Print` key
 
