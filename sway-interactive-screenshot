@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import abc
+import argparse
 import os
 import json
 import subprocess
@@ -44,6 +45,8 @@ class Window(NamedTuple):
 
 
 class AllOutputs:
+    selection_name = "all-outputs"
+
     def __str__(self) -> str:
         return "all outputs"
 
@@ -52,6 +55,8 @@ class AllOutputs:
 
 
 class Region:
+    selection_name = "region"
+
     def __str__(self) -> str:
         return "region"
 
@@ -64,6 +69,8 @@ class Region:
 
 
 class FocusedWindow:
+    selection_name = "focused-window"
+
     def __str__(self) -> str:
         return "focused window"
 
@@ -79,6 +86,8 @@ class FocusedWindow:
 
 
 class SelectWindow:
+    selection_name = "select-window"
+
     def __str__(self) -> str:
         return "select window"
 
@@ -94,6 +103,8 @@ class SelectWindow:
 
 
 class FocusedOutput:
+    selection_name = "focused-output"
+
     def __str__(self) -> str:
         return "focused output"
 
@@ -123,6 +134,8 @@ class Output(NamedTuple):
 
 
 class SelectOutput:
+    selection_name = "select-output"
+
     def __str__(self) -> str:
         return "select output"
 
@@ -336,7 +349,8 @@ class OpenNotificationAction(NotificationAction):
 
 
 NOTIFICATION_ACTIONS = {
-    action.name: action for action in (
+    action.name: action
+    for action in (
         EditNotificationAction,
         DeleteNotificationAction,
         DragonNotificationAction,
@@ -345,32 +359,85 @@ NOTIFICATION_ACTIONS = {
 }
 
 
+def parse_arguments():
+    argparser = argparse.ArgumentParser(
+        prog="sway-interactive-screenshot",
+        description="Interactively take screenshots with Sway.",
+    )
+    selections = (
+        Region,
+        FocusedOutput,
+        AllOutputs,
+        SelectOutput,
+        FocusedWindow,
+        SelectWindow,
+    )
+    argparser.add_argument(
+        "-s",
+        "--selection",
+        choices=[selection.selection_name for selection in selections],
+        help="Selection mode.",
+    )
+    argparser.add_argument(
+        "--save-dir",
+        help="Directory where screenshots are saved.",
+    )
+    argparser.add_argument(
+        "-o",
+        "--output",
+        help="Output file name. If set, --save-dir is ignored.",
+    )
+
+    args = argparser.parse_args()
+    if args.selection is not None:
+        args.selection = next(
+            (
+                selection
+                for selection in selections
+                if selection.selection_name == args.selection
+            ),
+            None,
+        )
+    return args
+
+
 def main():
-    save_path = Path(os.getenv("SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR", "~"))
-    save_path.expanduser().mkdir(parents=True, exist_ok=True)
+    args = parse_arguments()
+    save_dir = (
+        Path(args.save_dir)
+        if args.save_dir is not None
+        else Path(os.getenv("SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR", "~"))
+    )
+    save_dir.expanduser().mkdir(parents=True, exist_ok=True)
+    filepath = Path(args.output) if args.output else None
 
     try:
-        choices = [
-            Region(),
-            FocusedOutput(),
-            AllOutputs(),
-            SelectOutput(),
-            *get_outputs(),
-            FocusedWindow(),
-            SelectWindow(),
-            *get_windows(),
-        ]
+        if args.selection is None:
+            choices = [
+                Region(),
+                FocusedOutput(),
+                AllOutputs(),
+                SelectOutput(),
+                *get_outputs(),
+                FocusedWindow(),
+                SelectWindow(),
+                *get_windows(),
+            ]
 
-        choice_idx = ask(choices, prompt="📷> ", index=True)
-        if choice_idx is None:
-            return
-        if choice_idx == -1:
-            raise CanceledError("No option selected.")
+            choice_idx = ask(choices, prompt="📷> ", index=True)
+            if choice_idx is None:
+                return
+            if choice_idx == -1:
+                raise CanceledError("No option selected.")
 
-        choice = choices[choice_idx]
+            choice = choices[choice_idx]
+        else:
+            choice = args.selection()
 
-        time_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        filepath = save_path / f"screenshot_{time_str}.png"
+        if not filepath:
+            time_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            filepath = save_dir / f"screenshot_{time_str}.png"
+
         choice.capture(filepath=filepath.expanduser())
         copy_file_to_clipboard(filepath.expanduser())
 
