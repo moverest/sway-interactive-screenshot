@@ -110,7 +110,7 @@ class FocusedOutput:
 
     def capture(self, *, filepath: str) -> None:
         output = next(
-            (output for output in get_windows() if output.focused),
+            (output for output in get_outputs() if output.focused),
             None,
         )
         if output is None:
