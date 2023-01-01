@@ -326,11 +326,21 @@ class DragonNotificationAction(NotificationAction):
         subprocess.run(["dragon-drop", filepath.expanduser()], check=False)
 
 
+class OpenNotificationAction(NotificationAction):
+    name = "open"
+    description = "Open screenshot"
+
+    @classmethod
+    def run(cls, *, filepath: Path) -> None:
+        subprocess.run(["xdg-open", filepath.expanduser()], check=False)
+
+
 NOTIFICATION_ACTIONS = {
     action.name: action for action in (
         EditNotificationAction,
         DeleteNotificationAction,
         DragonNotificationAction,
+        OpenNotificationAction,
     )
 }
 

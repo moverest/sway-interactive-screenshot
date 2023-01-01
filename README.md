@@ -28,6 +28,8 @@ For the program to work, you will need the following dependencies installed:
   screenshot.
 - [`dragon`](https://github.com/mwh/dragon) (optional) to drag and drop the
   captured screenshot.
+- [`xdg-utils`](https://www.freedesktop.org/wiki/Software/xdg-utils/)
+  (optional) to open the captured screenshot with the default image viewer.
 
 ## Bind to the `Print` key
 
