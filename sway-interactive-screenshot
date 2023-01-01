@@ -317,8 +317,21 @@ class DeleteNotificationAction(NotificationAction):
         notify("Screenshot deleted")
 
 
+class DragonNotificationAction(NotificationAction):
+    name = "dragon"
+    description = "Drag and drop screenshot"
+
+    @classmethod
+    def run(cls, *, filepath: Path) -> None:
+        subprocess.run(["dragon-drop", filepath.expanduser()], check=False)
+
+
 NOTIFICATION_ACTIONS = {
-    action.name: action for action in (EditNotificationAction, DeleteNotificationAction)
+    action.name: action for action in (
+        EditNotificationAction,
+        DeleteNotificationAction,
+        DragonNotificationAction,
+    )
 }
 
 
