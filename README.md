@@ -1,7 +1,7 @@
 # sway-interactive-screenshot
 
 `sway-interactive-screenshot` is Python script that enable users to take
-screenshot interactively with [Sway](https://swaywm.org).
+screenshots and video captures interactively with [Sway](https://swaywm.org).
 
 ## Install
 
@@ -30,6 +30,8 @@ For the program to work, you will need the following dependencies installed:
   captured screenshot.
 - [`xdg-utils`](https://www.freedesktop.org/wiki/Software/xdg-utils/)
   (optional) to open the captured screenshot with the default image viewer.
+  [`wf-recorder`](https://github.com/ammen99/wf-recorder) (optional) to capture
+  videos.
 
 ## Bind to the `Print` key
 
@@ -37,6 +39,12 @@ To bind this script to the `Print` key, just add this to your `~/.config/sway/co
 
 ```
 bindsym Print exec /path/to/sway-interactive-screenshot
+```
+
+You can also add this to do video capture:
+
+```
+bindsym Shift+Print exec /path/to/sway-interactive-screenshot --video
 ```
 
 ## Edit the screenshot
