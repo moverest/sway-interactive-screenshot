@@ -628,7 +628,7 @@ def main():
         if isinstance(err, CanceledError):
             notify(f"{mode.get_display_name()} canceled", summary=err.msg)
         else:
-            notify(f"{mode.get_display_name()} error")
+            notify(f"{mode.get_display_name()} error", str(err))
             raise
 
 
