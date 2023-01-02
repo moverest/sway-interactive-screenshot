@@ -26,6 +26,11 @@ class CanceledError(Exception):
         self.msg = msg
 
 
+class Area(NamedTuple):
+    output: Optional[str] = None
+    geometry: Optional[str] = None
+
+
 class Window(NamedTuple):
     name: str
     x: int
@@ -40,8 +45,8 @@ class Window(NamedTuple):
     def get_geometry_str(self) -> str:
         return f"{self.x},{self.y} {self.width}x{self.height}"
 
-    def capture(self, *, filepath: str) -> None:
-        capture(filepath=filepath, geometry=self.get_geometry_str())
+    def get_area(self) -> Area:
+        return Area(geometry=self.get_geometry_str())
 
 
 class AllOutputs:
@@ -50,8 +55,8 @@ class AllOutputs:
     def __str__(self) -> str:
         return "all outputs"
 
-    def capture(self, *, filepath: str) -> None:
-        capture(filepath=filepath)
+    def get_area(self) -> Area:
+        return Area()
 
 
 class Region:
@@ -60,12 +65,12 @@ class Region:
     def __str__(self) -> str:
         return "region"
 
-    def capture(self, *, filepath: str) -> None:
+    def get_area(self) -> Area:
         geometry = ask_geometry()
         if geometry is None:
             raise CanceledError("No region selected.")
 
-        capture(filepath=filepath, geometry=geometry)
+        return Area(geometry=geometry)
 
 
 class FocusedWindow:
@@ -74,7 +79,7 @@ class FocusedWindow:
     def __str__(self) -> str:
         return "focused window"
 
-    def capture(self, *, filepath: str) -> None:
+    def get_area(self) -> Area:
         window = next(
             (window for window in get_windows() if window.focused),
             None,
@@ -82,7 +87,7 @@ class FocusedWindow:
         if window is None:
             raise CanceledError("Could not find any focused window.")
 
-        window.capture(filepath=filepath)
+        return window.get_area()
 
 
 class SelectWindow:
@@ -91,7 +96,7 @@ class SelectWindow:
     def __str__(self) -> str:
         return "select window"
 
-    def capture(self, *, filepath: str) -> None:
+    def get_area(self) -> Area:
         windows = list(get_windows())
         if not windows:
             raise CanceledError("No visible window found.")
@@ -99,7 +104,8 @@ class SelectWindow:
         geometry = ask_geometry(window.get_geometry_str() for window in windows)
         if geometry is None:
             raise CanceledError("No window selected.")
-        capture(filepath=filepath, geometry=geometry)
+
+        return Area(geometry=geometry)
 
 
 class FocusedOutput:
@@ -108,7 +114,7 @@ class FocusedOutput:
     def __str__(self) -> str:
         return "focused output"
 
-    def capture(self, *, filepath: str) -> None:
+    def get_area(self) -> Area:
         output = next(
             (output for output in get_outputs() if output.focused),
             None,
@@ -116,7 +122,7 @@ class FocusedOutput:
         if output is None:
             raise CanceledError("Could not find any focused output.")
 
-        output.capture(filepath=filepath)
+        return output.get_area()
 
 
 class Output(NamedTuple):
@@ -129,8 +135,8 @@ class Output(NamedTuple):
         focused = " (focused)" if self.focused else ""
         return f"output: {self.name}{model}{focused}"
 
-    def capture(self, *, filepath: str) -> None:
-        capture(filepath=filepath, output=self.name)
+    def get_area(self) -> Area:
+        return Area(output=self.name)
 
 
 class SelectOutput:
@@ -139,12 +145,12 @@ class SelectOutput:
     def __str__(self) -> str:
         return "select output"
 
-    def capture(self, *, filepath: str) -> None:
+    def get_area(self) -> Area:
         output = ask_output()
         if output is None:
             raise CanceledError("No output selected.")
 
-        capture(filepath=filepath, output=output)
+        return Area(output=output)
 
 
 def get_windows() -> Iterator[Window]:
@@ -438,7 +444,8 @@ def main():
             time_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             filepath = save_dir / f"screenshot_{time_str}.png"
 
-        choice.capture(filepath=filepath.expanduser())
+        area = choice.get_area()
+        capture(filepath=filepath, output=area.output, geometry=area.geometry)
         copy_file_to_clipboard(filepath.expanduser())
 
         action_name = notify(
