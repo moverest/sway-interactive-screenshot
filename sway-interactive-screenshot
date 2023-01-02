@@ -4,6 +4,8 @@ import abc
 import argparse
 import os
 import json
+import signal
+import sys
 import subprocess
 from datetime import datetime
 from typing import (
@@ -16,12 +18,13 @@ from typing import (
     Union,
     Optional,
     Tuple,
+    Type,
 )
 from pathlib import Path
 
 
 class CanceledError(Exception):
-    def __init__(self, msg: str) -> None:
+    def __init__(self, msg: Optional[str] = None) -> None:
         super().__init__(msg)
         self.msg = msg
 
@@ -267,6 +270,42 @@ def capture(
     subprocess.run(args, check=True)
 
 
+def video_capture(
+    *,
+    filepath: str,
+    geometry: Optional[str] = None,
+    output: Optional[str] = None,
+    audio: Union[bool, str, None] = None,
+    pid_file: Optional[Path] = None,
+) -> None:
+    args = ["wf-recorder", "-f", filepath]
+
+    if geometry is not None:
+        args.extend(("-g", geometry))
+
+    if output is not None:
+        args.extend(("-o", output))
+
+    if audio is not None:
+        if audio is True:
+            args.append("-a")
+        else:
+            args.extend(("-a", str(audio)))
+
+    with subprocess.Popen(args) as process:
+        try:
+            if pid_file:
+                pid_file.write_text(str(process.pid))
+            process.wait()
+            if process.returncode != 0:
+                raise Exception(
+                    f"wf-recorder exited with status code {process.returncode}"
+                )
+        finally:
+            if pid_file:
+                pid_file.unlink(missing_ok=True)
+
+
 def ask_geometry(geometries: Optional[Iterable[str]] = None) -> Optional[str]:
     if geometries is not None:
         geomerties_input = b"\n".join(geometry.encode() for geometry in geometries)
@@ -317,7 +356,7 @@ class NotificationAction(abc.ABC):
 
 class EditNotificationAction(NotificationAction):
     name = "default"
-    description = "Edit screenshot"
+    description = "Edit"
 
     @classmethod
     def run(cls, *, filepath: Path) -> None:
@@ -328,17 +367,17 @@ class EditNotificationAction(NotificationAction):
 
 class DeleteNotificationAction(NotificationAction):
     name = "delete"
-    description = "Delete screenshot"
+    description = "Delete"
 
     @classmethod
     def run(cls, *, filepath: Path) -> None:
         filepath.expanduser().unlink()
-        notify("Screenshot deleted")
+        notify("Deleted")
 
 
 class DragonNotificationAction(NotificationAction):
     name = "dragon"
-    description = "Drag and drop screenshot"
+    description = "Drag and drop"
 
     @classmethod
     def run(cls, *, filepath: Path) -> None:
@@ -347,22 +386,11 @@ class DragonNotificationAction(NotificationAction):
 
 class OpenNotificationAction(NotificationAction):
     name = "open"
-    description = "Open screenshot"
+    description = "Open"
 
     @classmethod
     def run(cls, *, filepath: Path) -> None:
         subprocess.run(["xdg-open", filepath.expanduser()], check=False)
-
-
-NOTIFICATION_ACTIONS = {
-    action.name: action
-    for action in (
-        EditNotificationAction,
-        DeleteNotificationAction,
-        DragonNotificationAction,
-        OpenNotificationAction,
-    )
-}
 
 
 def parse_arguments():
@@ -393,6 +421,11 @@ def parse_arguments():
         "--output",
         help="Output file name. If set, --save-dir is ignored.",
     )
+    argparser.add_argument(
+        "--video",
+        help="Make a screen video recording.",
+        action="store_true",
+    )
 
     args = argparser.parse_args()
     if args.selection is not None:
@@ -407,6 +440,127 @@ def parse_arguments():
     return args
 
 
+class CaptureMode(abc.ABC):
+    @abc.abstractmethod
+    def get_prompt(self) -> str:
+        pass
+
+    @abc.abstractmethod
+    def get_filename(self) -> str:
+        pass
+
+    @abc.abstractmethod
+    def get_display_name(self) -> str:
+        pass
+
+    def early_exit(self) -> bool:
+        return False
+
+    @abc.abstractmethod
+    def capture(self, *, area: Area, filepath: str) -> None:
+        pass
+
+    @abc.abstractmethod
+    def get_notification_actions(self) -> Iterable[Type[NotificationAction]]:
+        pass
+
+    def get_notification_icon(self, filepath: str) -> Optional[str]:
+        return None
+
+
+class Screenshot(CaptureMode):
+    def get_prompt(self) -> str:
+        return "📷> "
+
+    def get_filename(self) -> str:
+        return datetime.now().strftime("screenshot_%Y-%m-%dT%H:%M:%S.png")
+
+    def get_display_name(self) -> str:
+        return "Screenshot"
+
+    def capture(self, *, area: Area, filepath: str) -> None:
+        capture(
+            filepath=filepath,
+            geometry=area.geometry,
+            output=area.output,
+        )
+        copy_file_to_clipboard(filepath)
+
+    def get_notification_actions(self) -> Iterable[Type[NotificationAction]]:
+        return (
+            EditNotificationAction,
+            DeleteNotificationAction,
+            DragonNotificationAction,
+            OpenNotificationAction,
+        )
+
+    def get_notification_icon(self, filepath: str) -> Optional[str]:
+        return filepath
+
+
+class VideoCapture(CaptureMode):
+    def get_prompt(self) -> str:
+        return "📹> "
+
+    def get_filename(self) -> str:
+        return datetime.now().strftime("video_capture_%Y-%m-%dT%H:%M:%S.mkv")
+
+    def get_display_name(self) -> str:
+        return "Video capture"
+
+    def get_pid_filepath(self) -> Path:
+        xdg_runtime_dir = os.getenv("XDG_RUNTIME_DIR")
+        if xdg_runtime_dir is None:
+            xdg_runtime_dir = f"/run/user/{os.getuid()}"
+
+        wayland_display = os.getenv("WAYLAND_DISPLAY", "wayland-1")
+
+        return (
+            Path(xdg_runtime_dir)
+            / f"sway-interactive-screenshot.{wayland_display}.video.pid"
+        )
+
+    def early_exit(self) -> bool:
+        pid_filepath = self.get_pid_filepath()
+        if pid_filepath.exists():
+            pid = int(pid_filepath.read_text())
+            print(
+                f"Sending kill signal to {pid} to stop video recording.",
+                file=sys.stderr,
+            )
+            os.kill(pid, signal.SIGINT)
+            notify(self.get_display_name(), "Stopping recording.")
+            return True
+
+        return False
+
+    def capture(self, *, area: Area, filepath: str) -> None:
+        audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
+        if audio_raw_input is None:
+            raise CanceledError("No audio preference selected.")
+
+        start_recording = ask(
+            ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
+        )
+        if start_recording != "yes":
+            raise CanceledError()
+
+        video_capture(
+            filepath=filepath,
+            geometry=area.geometry,
+            output=area.output,
+            audio=audio_raw_input == "yes",
+            pid_file=self.get_pid_filepath(),
+        )
+
+    def get_notification_actions(self) -> Iterable[Type[NotificationAction]]:
+        return (
+            DeleteNotificationAction,
+            DragonNotificationAction,
+            OpenNotificationAction,
+        )
+
+
 def main():
     args = parse_arguments()
     save_dir = (
@@ -416,13 +570,16 @@ def main():
     )
     save_dir.expanduser().mkdir(parents=True, exist_ok=True)
     filepath = Path(args.output) if args.output else None
+    mode: CaptureMode = Screenshot() if not args.video else VideoCapture()
+    if mode.early_exit():
+        return
 
     try:
         if args.selection is None:
             choices = [
                 Region(),
                 FocusedOutput(),
-                AllOutputs(),
+                *((AllOutputs(),) if isinstance(mode, Screenshot) else ()),
                 SelectOutput(),
                 *get_outputs(),
                 FocusedWindow(),
@@ -430,7 +587,7 @@ def main():
                 *get_windows(),
             ]
 
-            choice_idx = ask(choices, prompt="📷> ", index=True)
+            choice_idx = ask(choices, prompt=mode.get_prompt(), index=True)
             if choice_idx is None:
                 return
             if choice_idx == -1:
@@ -440,32 +597,38 @@ def main():
         else:
             choice = args.selection()
 
-        if not filepath:
-            time_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            filepath = save_dir / f"screenshot_{time_str}.png"
-
         area = choice.get_area()
-        capture(filepath=filepath, output=area.output, geometry=area.geometry)
-        copy_file_to_clipboard(filepath.expanduser())
+        if not filepath:
+            filepath = save_dir / mode.get_filename()
+
+        mode.capture(filepath=filepath.expanduser(), area=area)
 
         action_name = notify(
-            "Screenshot",
+            mode.get_display_name(),
             summary=f"File saved as <i>{filepath}</i>.",
-            icon=filepath.expanduser(),
+            icon=mode.get_notification_icon(filepath.expanduser()),
             actions=[
                 (action.name, action.description)
-                for action in NOTIFICATION_ACTIONS.values()
+                for action in mode.get_notification_actions()
             ],
         )
-        action = NOTIFICATION_ACTIONS.get(action_name)
+        action = next(
+            (
+                action
+                for action in mode.get_notification_actions()
+                if action.name == action_name
+            ),
+            None,
+        )
+
         if action is not None:
             action.run(filepath=filepath)
 
     except Exception as err:  # pylint: disable=broad-except
         if isinstance(err, CanceledError):
-            notify("Screenshot canceled", summary=err.msg)
+            notify(f"{mode.get_display_name()} canceled", summary=err.msg)
         else:
-            notify("Screenshot error")
+            notify(f"{mode.get_display_name()} error")
             raise
 
 
