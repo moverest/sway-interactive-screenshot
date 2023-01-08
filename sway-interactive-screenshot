@@ -8,8 +8,10 @@ import signal
 import sys
 import subprocess
 from datetime import datetime
+from functools import partial
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -17,10 +19,152 @@ from typing import (
     NamedTuple,
     Union,
     Optional,
+    Set,
     Tuple,
     Type,
 )
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
+
+class ValidationError(NamedTuple):
+    path: str
+    error: str
+
+
+CONFIG_VALIDATOR = Callable[[str, Any], Iterator[ValidationError]]
+
+
+def config_dict_validator(
+    field_validators: Dict[str, CONFIG_VALIDATOR]
+) -> CONFIG_VALIDATOR:
+    def validate(path: str, value: Any) -> Iterator[ValidationError]:
+        if not isinstance(value, Dict):
+            yield ValidationError(path, "Should be a dictionary.")
+            return
+
+        unknown_fields = set(value).difference(field_validators)
+        for unknown_field in unknown_fields:
+            yield ValidationError(f"{path}.{unknown_field}", "Field does not exist.")
+
+        for field_name, field_value in value.items():
+            if field_name not in field_validators:
+                continue
+
+            yield from field_validators[field_name](f"{path}.{field_name}", field_value)
+
+    return validate
+
+
+def config_type_validator(*types: Type) -> CONFIG_VALIDATOR:
+    def validate(path: str, value: Any) -> Iterator[ValidationError]:
+        if not isinstance(value, types):
+            yield ValidationError(
+                path, f"Type {type(value)} is not one of {', '.join(types)}."
+            )
+
+    return validate
+
+
+def config_enum_validator(values: Set[Any]) -> CONFIG_VALIDATOR:
+    def validate(path: str, value: Any) -> Iterator[ValidationError]:
+        if value not in values:
+            yield ValidationError(path, f"Value '{value}' not one of {values}.")
+
+    return validate
+
+
+class ConfigError(Exception):
+    def __init__(self, errors: List[ValidationError]) -> None:
+        super().__init__(
+            "Config errors: \n"
+            + "\n".join(f" {error.path}: {error.error}" for error in errors)
+        )
+        self.errors = errors
+
+
+class Config:
+    CONFIG_DEFAULT = {
+        "screenshot": {
+            "prompt": "📷> ",
+            "file_name": "screenshot_%Y-%m-%dT%H:%M:%S.png",
+        },
+        "screencast": {
+            "prompt": "📹> ",
+            "pid_file": "${XDG_RUNTIME_DIR}/sway-interactive-screenshot.${WAYLAND_DISPLAY}.video.pid",
+            "file_name": "screencast_%Y-%m-%dT%H:%M:%S.mkv",
+            "audio": "ask",
+        },
+    }
+
+    _validate = staticmethod(
+        config_dict_validator(
+            {
+                "screenshot": config_dict_validator(
+                    {
+                        "prompt": config_type_validator(str),
+                        "save_dir": config_type_validator(str),
+                        "file_name": config_type_validator(str),
+                        "type": config_enum_validator({"png", "jpeg", "ppm"}),
+                        "jpeg_quality": config_type_validator(int),
+                        "png_level": config_type_validator(int),
+                        "cursor": config_type_validator(bool),
+                    }
+                ),
+                "screencast": config_dict_validator(
+                    {
+                        "prompt": config_type_validator(str),
+                        "save_dir": config_type_validator(str),
+                        "pid_file": config_type_validator(str),
+                        "file_name": config_type_validator(str),
+                        "audio": config_enum_validator({"yes", "no", "ask"}),
+                    }
+                ),
+            }
+        )
+    )
+
+    config: Dict[str, Any]
+
+    def __init__(self, filepath: Union[Path, str, None]) -> None:
+        self._load(filepath)
+        errors = list(self._validate("", self.config))
+        if errors:
+            raise ConfigError(errors)
+
+    def get(self, *path: str) -> Any:
+        value: Any = self.config
+        for item in path:
+            if item not in value:
+                default: Any = self.CONFIG_DEFAULT
+                for item in path:
+                    default = default.get(item)
+                    if default is None:
+                        return None
+
+                return default
+
+            value = value.get(item)
+
+        return value
+
+    def _load(self, filepath: Union[Path, str, None]) -> None:
+        if filepath is None:
+            xdg_config_home = os.getenv("XDG_CONFIG_HOME", "~/.config")
+            filepath = Path(xdg_config_home) / "sway-interactive-screenshot/config.toml"
+
+        filepath = Path(filepath)
+
+        if filepath.exists():
+            with open(filepath, "rb") as f:
+                self.config = tomllib.load(f)
+
+        else:
+            self.config = {}
 
 
 class CanceledError(Exception):
@@ -256,11 +400,15 @@ def notify(
     return process.stdout.decode().strip() or None
 
 
-def capture(
+def take_screenshot(
     *,
     filepath: str,
     geometry: Optional[str] = None,
     output: Optional[str] = None,
+    cursor: Optional[bool] = None,
+    type_: Optional[str] = None,
+    jpeg_quality: Optional[int] = None,
+    png_level: Optional[int] = None,
 ) -> None:
     args = ["grim"]
 
@@ -270,11 +418,25 @@ def capture(
     if output is not None:
         args.extend(("-o", output))
 
+    if cursor:
+        args.append("-c")
+
+    if type_ is not None:
+        args.extend(("-t", type_))
+
+    if png_level is not None and (type == "png" or filepath.endswith(".png")):
+        args.extend(("-l", str(png_level)))
+
+    if jpeg_quality is not None and (
+        type == "jpeg" or filepath.endswith(".jpg") or filepath.endswith(".jpeg")
+    ):
+        args.extend(("-q", str(jpeg_quality)))
+
     args.append(filepath)
     subprocess.run(args, check=True)
 
 
-def video_capture(
+def take_screencast(
     *,
     filepath: str,
     geometry: Optional[str] = None,
@@ -430,6 +592,11 @@ def parse_arguments():
         help="Make a screen video recording.",
         action="store_true",
     )
+    argparser.add_argument(
+        "-c",
+        "--config",
+        help="Config file.",
+    )
 
     args = argparser.parse_args()
     if args.selection is not None:
@@ -445,13 +612,17 @@ def parse_arguments():
 
 
 class CaptureMode(abc.ABC):
-    @abc.abstractmethod
-    def get_prompt(self) -> str:
-        pass
+    def __init__(self, config_getter: Callable[[str], Any]) -> None:
+        self.config_getter = config_getter
 
-    @abc.abstractmethod
+    def get_prompt(self) -> str:
+        return self.config_getter("prompt")
+
     def get_filename(self) -> str:
-        pass
+        return datetime.now().strftime(self.config_getter("file_name"))
+
+    def get_save_dir(self) -> str:
+        return self.config_getter("save_dir")
 
     @abc.abstractmethod
     def get_display_name(self) -> str:
@@ -473,20 +644,18 @@ class CaptureMode(abc.ABC):
 
 
 class Screenshot(CaptureMode):
-    def get_prompt(self) -> str:
-        return "📷> "
-
-    def get_filename(self) -> str:
-        return datetime.now().strftime("screenshot_%Y-%m-%dT%H:%M:%S.png")
-
     def get_display_name(self) -> str:
         return "Screenshot"
 
     def capture(self, *, area: Area, filepath: str) -> None:
-        capture(
+        take_screenshot(
             filepath=filepath,
             geometry=area.geometry,
             output=area.output,
+            cursor=self.config_getter("cursor"),
+            type_=self.config_getter("type"),
+            jpeg_quality=self.config_getter("jpeg_quality"),
+            png_level=self.config_getter("png_level"),
         )
         copy_file_to_clipboard(filepath)
 
@@ -502,26 +671,20 @@ class Screenshot(CaptureMode):
         return filepath
 
 
-class VideoCapture(CaptureMode):
-    def get_prompt(self) -> str:
-        return "📹> "
-
-    def get_filename(self) -> str:
-        return datetime.now().strftime("video_capture_%Y-%m-%dT%H:%M:%S.mkv")
-
+class Screencast(CaptureMode):
     def get_display_name(self) -> str:
-        return "Video capture"
+        return "Screencast"
 
     def get_pid_filepath(self) -> Path:
-        xdg_runtime_dir = os.getenv("XDG_RUNTIME_DIR")
-        if xdg_runtime_dir is None:
-            xdg_runtime_dir = f"/run/user/{os.getuid()}"
-
+        uid = os.getuid()
+        xdg_runtime_dir = os.getenv("XDG_RUNTIME_DIR", f"/run/user/{uid}")
         wayland_display = os.getenv("WAYLAND_DISPLAY", "wayland-1")
 
-        return (
-            Path(xdg_runtime_dir)
-            / f"sway-interactive-screenshot.{wayland_display}.video.pid"
+        return Path(
+            self.config_getter("pid_file")
+            .replace("${XDG_RUNTIME_DIR}", xdg_runtime_dir)
+            .replace("${WAYLAND_DISPLAY}", wayland_display)
+            .replace("${UID}", str(uid))
         )
 
     def early_exit(self) -> bool:
@@ -539,9 +702,11 @@ class VideoCapture(CaptureMode):
         return False
 
     def capture(self, *, area: Area, filepath: str) -> None:
-        audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
-        if audio_raw_input is None:
-            raise CanceledError("No audio preference selected.")
+        audio_raw_input = self.config_getter("audio")
+        if audio_raw_input == "ask":
+            audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
+            if audio_raw_input is None:
+                raise CanceledError("No audio preference selected.")
 
         start_recording = ask(
             ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
@@ -549,7 +714,7 @@ class VideoCapture(CaptureMode):
         if start_recording != "yes":
             raise CanceledError()
 
-        video_capture(
+        take_screencast(
             filepath=filepath,
             geometry=area.geometry,
             output=area.output,
@@ -566,19 +731,28 @@ class VideoCapture(CaptureMode):
 
 
 def main():
-    args = parse_arguments()
-    save_dir = (
-        Path(args.save_dir)
-        if args.save_dir is not None
-        else Path(os.getenv("SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR", "~"))
-    )
-    save_dir.expanduser().mkdir(parents=True, exist_ok=True)
-    filepath = Path(args.output) if args.output else None
-    mode: CaptureMode = Screenshot() if not args.video else VideoCapture()
-    if mode.early_exit():
-        return
-
+    mode: Optional[CaptureMode] = None
     try:
+        args = parse_arguments()
+        config = Config(args.config)
+        mode: CaptureMode = (
+            Screenshot(partial(config.get, "screenshot"))
+            if not args.video
+            else Screencast(partial(config.get, "screencast"))
+        )
+        if mode.early_exit():
+            return
+
+        save_dir = args.save_dir
+        if save_dir is None:
+            save_dir = mode.get_save_dir()
+        if save_dir is None:
+            save_dir = os.getenv("SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR", "~")
+
+        save_dir = Path(save_dir)
+        save_dir.expanduser().mkdir(parents=True, exist_ok=True)
+        filepath = Path(args.output) if args.output else None
+
         if args.selection is None:
             choices = [
                 Region(),
@@ -605,7 +779,7 @@ def main():
         if not filepath:
             filepath = save_dir / mode.get_filename()
 
-        mode.capture(filepath=filepath.expanduser(), area=area)
+        mode.capture(filepath=str(filepath.expanduser()), area=area)
 
         action_name = notify(
             mode.get_display_name(),
@@ -629,10 +803,15 @@ def main():
             action.run(filepath=filepath)
 
     except Exception as err:  # pylint: disable=broad-except
+        display_name = (
+            mode.get_display_name()
+            if mode is not None
+            else "sway-interactive-screenshot"
+        )
         if isinstance(err, CanceledError):
-            notify(f"{mode.get_display_name()} canceled", summary=err.msg)
+            notify(f"{display_name} canceled", summary=err.msg)
         else:
-            notify(f"{mode.get_display_name()} error", str(err))
+            notify(f"{display_name} error", str(err))
             raise
 
 
