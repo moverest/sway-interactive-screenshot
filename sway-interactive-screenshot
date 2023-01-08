@@ -158,6 +158,10 @@ class SelectOutput:
 
 def get_windows() -> Iterator[Window]:
     def walk(node: Dict[str, Any]) -> Iterator[Window]:
+        sub_nodes = node.get("floating_nodes")
+        if sub_nodes:
+            for sub_node in sub_nodes:
+                yield from walk(sub_node)
         sub_nodes = node.get("nodes")
         if sub_nodes:
             for sub_node in sub_nodes:
