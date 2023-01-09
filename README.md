@@ -30,8 +30,9 @@ For the program to work, you will need the following dependencies installed:
   captured screenshot.
 - [`xdg-utils`](https://www.freedesktop.org/wiki/Software/xdg-utils/)
   (optional) to open the captured screenshot with the default image viewer.
-  [`wf-recorder`](https://github.com/ammen99/wf-recorder) (optional) to capture
+- [`wf-recorder`](https://github.com/ammen99/wf-recorder) (optional) to capture
   videos.
+- [`tomli`](https://github.com/hukkin/tomli) if not using Python 3.11+.
 
 ## Bind to the `Print` key
 
@@ -55,7 +56,51 @@ settings, this is done by just clicking on the notification.
 
 ## Settings
 
-By default, `sway-interactive-screenshot` saves the screenshots in the home
-directory. You can change that by setting the
-`SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR` environment variable to another
-directory.
+`sway-interactive-screenshot` can be configured through the `~/.config/sway-interactive-screenshot/config.toml` file. Here's an example:
+
+```toml
+[screenshot]
+
+# Prompt string to use.
+prompt = "📷> "
+
+# Directory in which to save screenshots.
+save_dir = "~"
+
+# File name format.
+# See: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+file_name = "screenshot_%Y-%m-%dT%H:%M:%S.png"
+
+# Image format.
+type = "png" # "jpeg", "ppm"
+
+# JPEG quality value.
+jpeg_quality = 80
+
+# PNG compression level value.
+png_level = 6
+
+# Show or hide cursor.
+cursor = false
+
+
+[screencast]
+
+# Prompt string to use.
+prompt = "📹> "
+
+# PID file used to keep track of a screencast in progress.
+pid_file = "${XDG_RUNTIME_DIR}/sway-interactive-screenshot.${WAYLAND_DISPLAY}.video.pid"
+
+# Directory in which to save screencast.
+save_dir = "~"
+
+# File name format.
+# See: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+file_name = "screencast_%Y-%m-%dT%H:%M:%S.mkv"
+
+# Record audio.
+audio = "ask" # "yes", "no"
+```
+
+The `SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR` environment variable, while still supported, is deprecated and will be removed in a future version.
