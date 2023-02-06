@@ -8,7 +8,7 @@ screenshots and video captures interactively with [Sway](https://swaywm.org).
 If you are using Arch Linux, you can install sway-interactive-screenshot with
 the
 [`sway-interactive-screenshot`](https://aur.archlinux.org/packages/sway-interactive-screenshot)
- AUR package (e.g. `yay -S sway-interactive-screenshot`).
+ AUR package (e.g. `yay -S sway-interactive-screenshot`). You can otherwise download the [`sway-interactive-screenshot`](https://raw.githubusercontent.com/moverest/sway-interactive-screenshot/master/sway-interactive-screenshot) file, set it as executable and add it to your `$PATH` (e.g. putting it into your `/usr/bin`)
 
 ## Dependencies
 
