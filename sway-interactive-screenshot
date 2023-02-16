@@ -157,7 +157,7 @@ class Config:
             xdg_config_home = os.getenv("XDG_CONFIG_HOME", "~/.config")
             filepath = Path(xdg_config_home) / "sway-interactive-screenshot/config.toml"
 
-        filepath = Path(filepath)
+        filepath = Path(filepath).expanduser()
 
         if filepath.exists():
             with open(filepath, "rb") as f:
