@@ -337,11 +337,12 @@ def get_outputs() -> Iterator[Output]:
         check=True,
     )
     for output in json.loads(process.stdout.decode()):
-        yield Output(
-            name=output["name"],
-            model=output["model"],
-            focused=output["focused"],
-        )
+        if output["active"]:
+            yield Output(
+                name=output["name"],
+                model=output["model"],
+                focused=output["focused"],
+            )
 
 
 def ask(
