@@ -101,6 +101,11 @@ file_name = "screencast_%Y-%m-%dT%H:%M:%S.mkv"
 
 # Record audio.
 audio = "ask" # "yes", "no"
+
+[notification_actions]
+# Alternative name for dragon-drop binary
+dragon.command = "dragon"
+
 ```
 
 The `SWAY_INTERACTIVE_SCREENSHOT_SAVEDIR` environment variable, while still supported, is deprecated and will be removed in a future version.

@@ -99,6 +99,11 @@ class Config:
             "file_name": "screencast_%Y-%m-%dT%H:%M:%S.mkv",
             "audio": "ask",
         },
+        "notification_actions": {
+            "dragon": {
+                "command": "dragon-drop",
+            }
+        },
     }
 
     _validate = staticmethod(
@@ -122,6 +127,15 @@ class Config:
                         "pid_file": config_type_validator(str),
                         "file_name": config_type_validator(str),
                         "audio": config_enum_validator({"yes", "no", "ask"}),
+                    }
+                ),
+                "notification_actions": config_dict_validator(
+                    {
+                        "dragon": config_dict_validator(
+                            {
+                                "command": config_type_validator(str),
+                            }
+                        )
                     }
                 ),
             }
@@ -517,7 +531,7 @@ class NotificationAction(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def run(cls, *, filepath: Path) -> None:
+    def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
         pass
 
 
@@ -526,7 +540,7 @@ class EditNotificationAction(NotificationAction):
     description = "Edit"
 
     @classmethod
-    def run(cls, *, filepath: Path) -> None:
+    def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
         filepath_str = str(filepath.expanduser())
         edit_capture(filepath_str)
         copy_file_to_clipboard(filepath_str)
@@ -537,7 +551,7 @@ class DeleteNotificationAction(NotificationAction):
     description = "Delete"
 
     @classmethod
-    def run(cls, *, filepath: Path) -> None:
+    def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
         filepath.expanduser().unlink()
         notify("Deleted")
 
@@ -547,8 +561,8 @@ class DragonNotificationAction(NotificationAction):
     description = "Drag and drop"
 
     @classmethod
-    def run(cls, *, filepath: Path) -> None:
-        subprocess.run(["dragon-drop", filepath.expanduser()], check=False)
+    def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
+        subprocess.run([config_getter("command"), filepath.expanduser()], check=False)
 
 
 class OpenNotificationAction(NotificationAction):
@@ -801,7 +815,11 @@ def main():
         )
 
         if action is not None:
-            action.run(filepath=filepath)
+            action.run(filepath=filepath,
+                       config_getter=partial(config.get,
+                                             "notification_actions",
+                                             action.name)
+                       )
 
     except Exception as err:  # pylint: disable=broad-except
         display_name = (
