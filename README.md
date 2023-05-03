@@ -1,7 +1,10 @@
 # sway-interactive-screenshot
 
-`sway-interactive-screenshot` is Python script that enable users to take
+`sway-interactive-screenshot` is Python helper script that enables users to take
 screenshots and video captures interactively with [Sway](https://swaywm.org).
+
+![fuzzel-sway-interactive-screenshot](https://user-images.githubusercontent.com/19509728/236029456-d633c09d-94fa-498c-bf4f-477283e181db.png)
+
 
 ## Install
 
