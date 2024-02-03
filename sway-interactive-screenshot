@@ -397,7 +397,7 @@ def notify(
     summary: Optional[str] = None,
     *,
     icon: Optional[str] = None,
-    actions: List[Tuple[str, str]] = None,
+    actions: Optional[List[Tuple[str, str]]] = None,
 ) -> Optional[str]:
     args = ["notify-send"]
 
@@ -411,7 +411,11 @@ def notify(
     if summary:
         args.append(summary)
 
-    process = subprocess.run(args, capture_output=True, check=True)
+    process = subprocess.run(args, capture_output=True)
+    if process.returncode != 0:
+        print("Error while sending notification.", file=sys.stderr)
+        print(process.stderr.decode(), file=sys.stderr)
+
     return process.stdout.decode().strip() or None
 
 
