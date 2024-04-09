@@ -574,7 +574,7 @@ class OpenNotificationAction(NotificationAction):
     description = "Open"
 
     @classmethod
-    def run(cls, *, filepath: Path) -> None:
+    def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
         subprocess.run(["xdg-open", filepath.expanduser()], check=False)
 
 
