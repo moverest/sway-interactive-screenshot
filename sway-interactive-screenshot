@@ -104,9 +104,9 @@ class Config:
                 "command": "dragon-drop",
             }
         },
-        "rofi" : {
-            "use_rofi" : False,
-            "rofi_theme": "",
+        "ask" : {
+            "command" : "fuzzel",
+            "args": [],
         }
     }
 
@@ -142,10 +142,10 @@ class Config:
                         )
                     }
                 ),
-                "rofi" : config_dict_validator(
+                "ask" : config_dict_validator(
                     {
-                        "use_rofi" : config_type_validator(bool),
-                        "rofi_theme" : config_type_validator(str),
+                        "command" : config_type_validator(str),
+                        "args" : config_type_validator(List),
                     }
                 ),
             }
@@ -375,12 +375,9 @@ def ask_rofi(
     prompt: Optional[str] = None,
     lines: Optional[int] = None,
     index: bool = False,
-    theme: str = ""
+    additional_args: Optional[List[str]] = None
 ) -> Union[int, str, None]:
     args = ["rofi", "-dmenu"]
-    
-    if len(theme) != 0:
-        args.extend(("-theme", theme))
 
     if index:
         args.extend(("-format","i"))
@@ -390,6 +387,10 @@ def ask_rofi(
 
     if lines is not None:
         args.extend(("-l", str(lines)))
+
+    print(additional_args)
+    if additional_args is not None:
+        args.extend(additional_args)
 
     process = subprocess.run(
         args,
@@ -406,12 +407,13 @@ def ask_rofi(
     return int(stdout) if index else stdout.strip()
 
 
-def ask(
+def ask_fuzzel(
     choices: List[Any],
     *,
     prompt: Optional[str] = None,
     lines: Optional[int] = None,
     index: bool = False,
+    additional_args: Optional[List[str]] = None
 ) -> Union[int, str, None]:
     args = ["fuzzel", "--dmenu"]
 
@@ -424,6 +426,9 @@ def ask(
     if lines is not None:
         args.extend(("--lines", str(lines)))
 
+    if additional_args is not None:
+        args.extend(additional_args)
+
     process = subprocess.run(
         args,
         input=b"\n".join(str(choice).encode() for choice in choices),
@@ -438,6 +443,14 @@ def ask(
 
     return int(stdout) if index else stdout.strip()
 
+
+ASK_FNS = {
+    "rofi" : ask_rofi,
+    "fuzzel" : ask_fuzzel
+}
+
+
+ask = ask_fuzzel
 
 def notify(
     title: str,
@@ -677,16 +690,6 @@ def parse_arguments():
     return args
 
 
-class Rofi:
-    use_rofi = False 
-    rofi_theme = ""
-
-    def __init__(self, d=None) -> None:
-         if d is not None:
-            for key, value in d.items():
-                setattr(self, key, value)
-
-
 class CaptureMode(abc.ABC):
     def __init__(self, config_getter: Callable[[str], Any]) -> None:
         self.config_getter = config_getter
@@ -708,7 +711,7 @@ class CaptureMode(abc.ABC):
         return False
 
     @abc.abstractmethod
-    def capture(self, *, area: Area, filepath: str, rofi: Rofi) -> None:
+    def capture(self, *, area: Area, filepath: str) -> None:
         pass
 
     @abc.abstractmethod
@@ -723,7 +726,7 @@ class Screenshot(CaptureMode):
     def get_display_name(self) -> str:
         return "Screenshot"
 
-    def capture(self, *, area: Area, filepath: str, rofi: Rofi) -> None:
+    def capture(self, *, area: Area, filepath: str) -> None:
         take_screenshot(
             filepath=filepath,
             geometry=area.geometry,
@@ -777,24 +780,14 @@ class Screencast(CaptureMode):
 
         return False
 
-    def capture(self, *, area: Area, filepath: str, rofi: Rofi) -> None:
+    def capture(self, *, area: Area, filepath: str) -> None:
         audio_raw_input = self.config_getter("audio")
         if audio_raw_input == "ask":
-            audio_raw_input = ""
-            if rofi.use_rofi:
-                audio_raw_input = ask_rofi(["yes", "no"], prompt=self.get_prompt() + "Audio? ", theme=rofi.rofi_theme)
-            else:
-                audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
+            audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
             if audio_raw_input is None:
                 raise CanceledError("No audio preference selected.")
 
-        start_recording =  ""
-        if rofi.use_rofi:
-            start_recording = ask_rofi(
-                ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? ", theme=rofi.rofi_theme
-            )
-        else:
-            start_recording = ask(
+        start_recording = start_recording = ask(
                 ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
             )
         if start_recording != "yes":
@@ -829,7 +822,10 @@ def main():
         if mode.early_exit():
             return
 
-        rofi = Rofi(config.get("rofi"))
+        ask =  partial(
+            ASK_FNS[config.get("ask","command")],
+            additional_args=config.get("ask","args")
+        )
         
         save_dir = args.save_dir
         if save_dir is None:
@@ -855,12 +851,7 @@ def main():
 
             choice_idx = None
             
-            print(rofi)
-
-            if rofi.use_rofi:
-                choice_idx = ask_rofi(choices, prompt=mode.get_prompt(), index=True,theme=rofi.rofi_theme)
-            else:
-                choice_idx = ask(choices, prompt=mode.get_prompt(), index=True)
+            choice_idx = ask(choices, prompt=mode.get_prompt(), index=True)
             if choice_idx is None:
                 return
             if choice_idx == -1:
