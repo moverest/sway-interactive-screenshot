@@ -104,6 +104,10 @@ class Config:
                 "command": "dragon-drop",
             }
         },
+        "rofi" : {
+            "use_rofi" : False,
+            "rofi_theme": "",
+        }
     }
 
     _validate = staticmethod(
@@ -136,6 +140,12 @@ class Config:
                                 "command": config_type_validator(str),
                             }
                         )
+                    }
+                ),
+                "rofi" : config_dict_validator(
+                    {
+                        "use_rofi" : config_type_validator(bool),
+                        "rofi_theme" : config_type_validator(str),
                     }
                 ),
             }
@@ -365,8 +375,12 @@ def ask_rofi(
     prompt: Optional[str] = None,
     lines: Optional[int] = None,
     index: bool = False,
+    theme: str = ""
 ) -> Union[int, str, None]:
     args = ["rofi", "-dmenu"]
+    
+    if len(theme) != 0:
+        args.extend(("-theme", theme))
 
     if index:
         args.extend(("-format","i"))
@@ -663,6 +677,16 @@ def parse_arguments():
     return args
 
 
+class Rofi:
+    use_rofi = False 
+    rofi_theme = ""
+
+    def __init__(self, d=None) -> None:
+         if d is not None:
+            for key, value in d.items():
+                setattr(self, key, value)
+
+
 class CaptureMode(abc.ABC):
     def __init__(self, config_getter: Callable[[str], Any]) -> None:
         self.config_getter = config_getter
@@ -684,7 +708,7 @@ class CaptureMode(abc.ABC):
         return False
 
     @abc.abstractmethod
-    def capture(self, *, area: Area, filepath: str) -> None:
+    def capture(self, *, area: Area, filepath: str, rofi: Rofi) -> None:
         pass
 
     @abc.abstractmethod
@@ -699,7 +723,7 @@ class Screenshot(CaptureMode):
     def get_display_name(self) -> str:
         return "Screenshot"
 
-    def capture(self, *, area: Area, filepath: str) -> None:
+    def capture(self, *, area: Area, filepath: str, rofi: Rofi) -> None:
         take_screenshot(
             filepath=filepath,
             geometry=area.geometry,
@@ -753,16 +777,26 @@ class Screencast(CaptureMode):
 
         return False
 
-    def capture(self, *, area: Area, filepath: str) -> None:
+    def capture(self, *, area: Area, filepath: str, rofi: Rofi) -> None:
         audio_raw_input = self.config_getter("audio")
         if audio_raw_input == "ask":
-            audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
+            audio_raw_input = ""
+            if rofi.use_rofi:
+                audio_raw_input = ask_rofi(["yes", "no"], prompt=self.get_prompt() + "Audio? ", theme=rofi.rofi_theme)
+            else:
+                audio_raw_input = ask(["yes", "no"], prompt=self.get_prompt() + "Audio? ")
             if audio_raw_input is None:
                 raise CanceledError("No audio preference selected.")
 
-        start_recording = ask(
-            ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
-        )
+        start_recording =  ""
+        if rofi.use_rofi:
+            start_recording = ask_rofi(
+                ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? ", theme=rofi.rofi_theme
+            )
+        else:
+            start_recording = ask(
+                ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
+            )
         if start_recording != "yes":
             raise CanceledError()
 
@@ -795,6 +829,8 @@ def main():
         if mode.early_exit():
             return
 
+        rofi = Rofi(config.get("rofi"))
+        
         save_dir = args.save_dir
         if save_dir is None:
             save_dir = mode.get_save_dir()
@@ -817,7 +853,14 @@ def main():
                 *get_windows(),
             ]
 
-            choice_idx = ask(choices, prompt=mode.get_prompt(), index=True)
+            choice_idx = None
+            
+            print(rofi)
+
+            if rofi.use_rofi:
+                choice_idx = ask_rofi(choices, prompt=mode.get_prompt(), index=True,theme=rofi.rofi_theme)
+            else:
+                choice_idx = ask(choices, prompt=mode.get_prompt(), index=True)
             if choice_idx is None:
                 return
             if choice_idx == -1:
@@ -831,7 +874,7 @@ def main():
         if not filepath:
             filepath = save_dir / mode.get_filename()
 
-        mode.capture(filepath=str(filepath.expanduser()), area=area)
+        mode.capture(filepath=str(filepath.expanduser()), area=area, rofi=rofi)
 
         action_name = notify(
             mode.get_display_name(),
