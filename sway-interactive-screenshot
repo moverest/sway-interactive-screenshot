@@ -359,6 +359,39 @@ def get_outputs() -> Iterator[Output]:
             )
 
 
+def ask_rofi(
+    choices: List[Any],
+    *,
+    prompt: Optional[str] = None,
+    lines: Optional[int] = None,
+    index: bool = False,
+) -> Union[int, str, None]:
+    args = ["rofi", "-dmenu"]
+
+    if index:
+        args.extend(("-format","i"))
+
+    if prompt is not None:
+        args.extend(("-p", prompt))
+
+    if lines is not None:
+        args.extend(("-l", str(lines)))
+
+    process = subprocess.run(
+        args,
+        input=b"\n".join(str(choice).encode() for choice in choices),
+        capture_output=True,
+        check=False,
+    )
+
+    if process.returncode != 0:
+        return None
+
+    stdout = process.stdout.decode()
+
+    return int(stdout) if index else stdout.strip()
+
+
 def ask(
     choices: List[Any],
     *,
