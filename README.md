@@ -110,9 +110,9 @@ audio = "ask" # "yes", "no"
 # Alternative name for dragon-drop binary
 dragon.command = "dragon"
 
-[rofi]
-use_rofi = false
-rofi_theme = ""
+[ask]
+command = "fuzzel" 
+args = []
 
 ```
 
