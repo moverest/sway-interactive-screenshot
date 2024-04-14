@@ -787,7 +787,7 @@ class Screencast(CaptureMode):
             if audio_raw_input is None:
                 raise CanceledError("No audio preference selected.")
 
-        start_recording = start_recording = ask(
+        start_recording = ask(
                 ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
             )
         if start_recording != "yes":
@@ -865,7 +865,7 @@ def main():
         if not filepath:
             filepath = save_dir / mode.get_filename()
 
-        mode.capture(filepath=str(filepath.expanduser()), area=area, rofi=rofi)
+        mode.capture(filepath=str(filepath.expanduser()), area=area)
 
         action_name = notify(
             mode.get_display_name(),
