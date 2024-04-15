@@ -77,6 +77,20 @@ def config_enum_validator(values: Set[Any]) -> CONFIG_VALIDATOR:
 
     return validate
 
+def config_list_validator(*types: Type) -> CONFIG_VALIDATOR:
+    def validate(path: str, value: Any) -> Iterator[ValidationError]:
+        if not isinstance(value, list):
+            yield ValidationError(path, f"Expected a list")
+            return
+
+        for i, element in enumerate(value):
+            if not isinstance(element, types):
+                yield ValidationError(
+                    f"{path}[{i}]", f"Type {type(value)} is not one of {', '.join(types)}."
+                )
+
+    return validate
+
 
 class ConfigError(Exception):
     def __init__(self, errors: List[ValidationError]) -> None:
@@ -145,7 +159,7 @@ class Config:
                 "ask" : config_dict_validator(
                     {
                         "command" : config_type_validator(str),
-                        "args" : config_type_validator(List),
+                        "args" : config_list_validator(str),
                     }
                 ),
             }
@@ -388,8 +402,7 @@ def ask_rofi(
     if lines is not None:
         args.extend(("-l", str(lines)))
 
-    print(additional_args)
-    if additional_args is not None:
+    if additional_args:
         args.extend(additional_args)
 
     process = subprocess.run(
@@ -426,7 +439,7 @@ def ask_fuzzel(
     if lines is not None:
         args.extend(("--lines", str(lines)))
 
-    if additional_args is not None:
+    if additional_args:
         args.extend(additional_args)
 
     process = subprocess.run(
@@ -822,7 +835,8 @@ def main():
         if mode.early_exit():
             return
 
-        ask =  partial(
+        global ask
+        ask = partial(
             ASK_FNS[config.get("ask","command")],
             additional_args=config.get("ask","args")
         )
@@ -849,8 +863,6 @@ def main():
                 *get_windows(),
             ]
 
-            choice_idx = None
-            
             choice_idx = ask(choices, prompt=mode.get_prompt(), index=True)
             if choice_idx is None:
                 return
