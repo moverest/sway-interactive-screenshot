@@ -77,6 +77,20 @@ def config_enum_validator(values: Set[Any]) -> CONFIG_VALIDATOR:
 
     return validate
 
+def config_list_validator(*types: Type) -> CONFIG_VALIDATOR:
+    def validate(path: str, value: Any) -> Iterator[ValidationError]:
+        if not isinstance(value, list):
+            yield ValidationError(path, f"Expected a list")
+            return
+
+        for i, element in enumerate(value):
+            if not isinstance(element, types):
+                yield ValidationError(
+                    f"{path}[{i}]", f"Type {type(value)} is not one of {', '.join(types)}."
+                )
+
+    return validate
+
 
 class ConfigError(Exception):
     def __init__(self, errors: List[ValidationError]) -> None:
@@ -104,6 +118,10 @@ class Config:
                 "command": "dragon-drop",
             }
         },
+        "ask" : {
+            "command" : "fuzzel",
+            "args": [],
+        }
     }
 
     _validate = staticmethod(
@@ -136,6 +154,12 @@ class Config:
                                 "command": config_type_validator(str),
                             }
                         )
+                    }
+                ),
+                "ask" : config_dict_validator(
+                    {
+                        "command" : config_type_validator(str),
+                        "args" : config_list_validator(str),
                     }
                 ),
             }
@@ -359,23 +383,27 @@ def get_outputs() -> Iterator[Output]:
             )
 
 
-def ask(
+def ask_rofi(
     choices: List[Any],
     *,
     prompt: Optional[str] = None,
     lines: Optional[int] = None,
     index: bool = False,
+    additional_args: Optional[List[str]] = None
 ) -> Union[int, str, None]:
-    args = ["fuzzel", "--dmenu"]
+    args = ["rofi", "-dmenu"]
 
     if index:
-        args.append("--index")
+        args.extend(("-format","i"))
 
     if prompt is not None:
-        args.extend(("--prompt", prompt))
+        args.extend(("-p", prompt))
 
     if lines is not None:
-        args.extend(("--lines", str(lines)))
+        args.extend(("-l", str(lines)))
+
+    if additional_args:
+        args.extend(additional_args)
 
     process = subprocess.run(
         args,
@@ -391,6 +419,51 @@ def ask(
 
     return int(stdout) if index else stdout.strip()
 
+
+def ask_fuzzel(
+    choices: List[Any],
+    *,
+    prompt: Optional[str] = None,
+    lines: Optional[int] = None,
+    index: bool = False,
+    additional_args: Optional[List[str]] = None
+) -> Union[int, str, None]:
+    args = ["fuzzel", "--dmenu"]
+
+    if index:
+        args.append("--index")
+
+    if prompt is not None:
+        args.extend(("--prompt", prompt))
+
+    if lines is not None:
+        args.extend(("--lines", str(lines)))
+
+    if additional_args:
+        args.extend(additional_args)
+
+    process = subprocess.run(
+        args,
+        input=b"\n".join(str(choice).encode() for choice in choices),
+        capture_output=True,
+        check=False,
+    )
+
+    if process.returncode != 0:
+        return None
+
+    stdout = process.stdout.decode()
+
+    return int(stdout) if index else stdout.strip()
+
+
+ASK_FNS = {
+    "rofi" : ask_rofi,
+    "fuzzel" : ask_fuzzel
+}
+
+
+ask = ask_fuzzel
 
 def notify(
     title: str,
@@ -728,8 +801,8 @@ class Screencast(CaptureMode):
                 raise CanceledError("No audio preference selected.")
 
         start_recording = ask(
-            ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
-        )
+                ["yes", "cancel"], prompt=self.get_prompt() + "Start recording? "
+            )
         if start_recording != "yes":
             raise CanceledError()
 
@@ -762,6 +835,12 @@ def main():
         if mode.early_exit():
             return
 
+        global ask
+        ask = partial(
+            ASK_FNS[config.get("ask","command")],
+            additional_args=config.get("ask","args")
+        )
+        
         save_dir = args.save_dir
         if save_dir is None:
             save_dir = mode.get_save_dir()

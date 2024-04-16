@@ -27,6 +27,7 @@ For the program to work, you will need the following dependencies installed:
   [`mako`](https://github.com/emersion/mako)).
 - [`wl-clipboard`](https://github.com/bugaevc/wl-clipboard) to copy the
   screenshot to the clipboard.
+- [`rofi`](https://github.com/lbonn/rofi) (optional) to use rofi instead of fuzzel
 - [`swappy`](https://github.com/jtheoof/swappy) (optional) to edit the captured
   screenshot.
 - [`dragon`](https://github.com/mwh/dragon) (optional) to drag and drop the
@@ -108,6 +109,10 @@ audio = "ask" # "yes", "no"
 [notification_actions]
 # Alternative name for dragon-drop binary
 dragon.command = "dragon"
+
+[ask]
+command = "fuzzel" 
+args = []
 
 ```
 
