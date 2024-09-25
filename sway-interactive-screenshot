@@ -544,7 +544,7 @@ def take_screencast(
     if output is not None:
         args.extend(("-o", output))
 
-    if audio is not None:
+    if audio:
         if audio is True:
             args.append("-a")
         else:
