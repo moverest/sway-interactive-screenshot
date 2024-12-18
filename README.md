@@ -28,6 +28,7 @@ For the program to work, you will need the following dependencies installed:
 - [`wl-clipboard`](https://github.com/bugaevc/wl-clipboard) to copy the
   screenshot to the clipboard.
 - [`rofi`](https://github.com/lbonn/rofi) (optional) to use rofi instead of fuzzel
+- [`wofi`](https://hg.sr.ht/~scoopta/wofi) (optional) to use wofi as an action selection menu.
 - [`swappy`](https://github.com/jtheoof/swappy) (optional) to edit the captured
   screenshot.
 - [`dragon`](https://github.com/mwh/dragon) (optional) to drag and drop the

@@ -420,6 +420,43 @@ def ask_rofi(
     return int(stdout) if index else stdout.strip()
 
 
+def ask_wofi(
+    choices: List[Any],
+    *,
+    prompt: Optional[str] = None,
+    lines: Optional[int] = None,
+    index: bool = False,
+    additional_args: Optional[List[str]] = None
+) -> Union[int, str, None]:
+    args = ["wofi", "--dmenu"]
+
+    if index:
+        choices_str = [str(choice) for choice in choices]
+
+    if prompt is not None:
+        args.extend(("--prompt", prompt))
+
+    if lines is not None:
+        args.extend(("--lines", str(lines)))
+
+    if additional_args:
+        args.extend(additional_args)
+
+    process = subprocess.run(
+        args,
+        input=b"\n".join(str(choice).encode() for choice in choices),
+        capture_output=True,
+        check=False,
+    )
+
+    if process.returncode != 0:
+        return None
+
+    stdout = process.stdout.decode()
+
+    return int(choices_str.index(stdout.strip())) if index else stdout.strip()
+
+
 def ask_fuzzel(
     choices: List[Any],
     *,
@@ -459,6 +496,7 @@ def ask_fuzzel(
 
 ASK_FNS = {
     "rofi" : ask_rofi,
+    "wofi" : ask_wofi,
     "fuzzel" : ask_fuzzel
 }
 
