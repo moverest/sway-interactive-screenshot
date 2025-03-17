@@ -7,6 +7,7 @@ import json
 import signal
 import sys
 import subprocess
+import shlex
 from datetime import datetime
 from functools import partial
 from typing import (
@@ -116,7 +117,10 @@ class Config:
         "notification_actions": {
             "dragon": {
                 "command": "dragon-drop",
-            }
+            },
+            "edit": {
+                "command": "swappy -o {} {}",
+            },
         },
         "ask" : {
             "command" : "fuzzel",
@@ -153,7 +157,12 @@ class Config:
                             {
                                 "command": config_type_validator(str),
                             }
-                        )
+                        ),
+                        "edit": config_dict_validator(
+                            {
+                                "command": config_type_validator(str),
+                            }
+                        ),
                     }
                 ),
                 "ask" : config_dict_validator(
@@ -592,10 +601,6 @@ def ask_output() -> Optional[str]:
     return process.stdout.decode().strip()
 
 
-def edit_capture(filepath: str) -> None:
-    subprocess.run(["swappy", "-f", filepath, "-o", filepath], check=False)
-
-
 def copy_file_to_clipboard(filepath: str) -> None:
     with open(filepath, "rb") as file:
         with subprocess.Popen("wl-copy", stdin=file) as process:
@@ -613,13 +618,14 @@ class NotificationAction(abc.ABC):
 
 
 class EditNotificationAction(NotificationAction):
-    name = "default"
+    name = "edit"
     description = "Edit"
 
     @classmethod
     def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
         filepath_str = str(filepath.expanduser())
-        edit_capture(filepath_str)
+        command_replaced = config_getter("command").replace("{}", filepath_str);
+        subprocess.run(shlex.split(command_replaced), check=False)
         copy_file_to_clipboard(filepath_str)
 
 
@@ -888,6 +894,8 @@ def main():
                 for action in mode.get_notification_actions()
             ],
         )
+        if action_name is None:
+            action_name = "edit"
         action = next(
             (
                 action
