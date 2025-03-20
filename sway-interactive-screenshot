@@ -119,7 +119,7 @@ class Config:
                 "command": "dragon-drop",
             },
             "edit": {
-                "command": "swappy -o {} {}",
+                "command": "swappy -f {} -o {}",
             },
         },
         "ask" : {
@@ -624,8 +624,8 @@ class EditNotificationAction(NotificationAction):
     @classmethod
     def run(cls, *, filepath: Path, config_getter: Callable[[str], Any]) -> None:
         filepath_str = str(filepath.expanduser())
-        command_replaced = config_getter("command").replace("{}", filepath_str);
-        subprocess.run(shlex.split(command_replaced), check=False)
+        cmd = [arg.replace("{}", filepath_str) for arg in shlex.split(config_getter("command"))]
+        subprocess.run(cmd, check=False)
         copy_file_to_clipboard(filepath_str)
 
 
