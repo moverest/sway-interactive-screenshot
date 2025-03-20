@@ -109,6 +109,8 @@ audio = "ask" # "yes", "no"
 [notification_actions]
 # Alternative name for dragon-drop binary
 dragon.command = "dragon"
+# Alternative name for swappy command : {} will be replaced by the file path to the screenshot
+edit.command = "swappy -f {} -o {}"
 
 [ask]
 command = "fuzzel" 
