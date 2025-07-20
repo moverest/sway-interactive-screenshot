@@ -144,6 +144,7 @@ class Config:
                         "save_dir": config_type_validator(str),
                         "pid_file": config_type_validator(str),
                         "file_name": config_type_validator(str),
+                        "video_codec": config_type_validator(str),
                         "audio": config_enum_validator({"yes", "no", "ask"}),
                     }
                 ),
@@ -533,6 +534,7 @@ def take_screencast(
     filepath: str,
     geometry: Optional[str] = None,
     output: Optional[str] = None,
+    video_codec: Union[str, None],
     audio: Union[bool, str, None] = None,
     pid_file: Optional[Path] = None,
 ) -> None:
@@ -543,6 +545,9 @@ def take_screencast(
 
     if output is not None:
         args.extend(("-o", output))
+
+    if video_codec is not None:
+        args.extend(("-c", video_codec))
 
     if audio:
         if audio is True:
@@ -810,6 +815,7 @@ class Screencast(CaptureMode):
             filepath=filepath,
             geometry=area.geometry,
             output=area.output,
+            video_codec=self.config_getter("video_codec"),
             audio=audio_raw_input == "yes",
             pid_file=self.get_pid_filepath(),
         )

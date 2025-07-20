@@ -103,6 +103,10 @@ save_dir = "~"
 # See: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
 file_name = "screencast_%Y-%m-%dT%H:%M:%S.mkv"
 
+# Video codec for ffmpeg, useful if you want hardware acceleration.
+# See https://ffmpeg.org/ffmpeg-codecs.html
+video_codec = "h264_vaapi"
+
 # Record audio.
 audio = "ask" # "yes", "no"
 
