@@ -64,7 +64,7 @@ def config_type_validator(*types: Type) -> CONFIG_VALIDATOR:
     def validate(path: str, value: Any) -> Iterator[ValidationError]:
         if not isinstance(value, types):
             yield ValidationError(
-                path, f"Type {type(value)} is not one of {', '.join(types)}."
+                path, f"Type {type(value)} is not one of {', '.join(map(str, types))}."
             )
 
     return validate
@@ -86,7 +86,7 @@ def config_list_validator(*types: Type) -> CONFIG_VALIDATOR:
         for i, element in enumerate(value):
             if not isinstance(element, types):
                 yield ValidationError(
-                    f"{path}[{i}]", f"Type {type(value)} is not one of {', '.join(types)}."
+                    f"{path}[{i}]", f"Type {type(value)} is not one of {', '.join(map(str, types))}."
                 )
 
     return validate
